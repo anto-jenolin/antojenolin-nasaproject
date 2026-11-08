@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 
 COPY backend ./backend
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+COPY --from=frontend-builder /app/frontend/dist ./backend/static_dist
 
 # Copy bundled data samples and trained models
 COPY data/sample_parquet ./data/sample_parquet

@@ -99,12 +99,38 @@ async def health():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Serve built frontend (production)
+# Serve built frontend (production SPA)
 # ─────────────────────────────────────────────────────────────────────────────
+from fastapi.responses import FileResponse
 
-FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
-if FRONTEND_DIST.exists():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
+# Check both possible locations: adjacent frontend/dist or local static_dist
+possible_dirs = [
+    Path(__file__).parent.parent / "frontend" / "dist",
+    Path(__file__).parent / "static_dist",
+    Path("/app/frontend/dist"),
+]
+
+frontend_dist_dir = None
+for d in possible_dirs:
+    if d.exists() and (d / "index.html").exists():
+        frontend_dist_dir = d
+        break
+
+if frontend_dist_dir:
+    # Mount assets subfolder
+    assets_dir = frontend_dist_dir / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+    # Catch-all route to serve index.html for React Router SPA routes like /login, /explorer, /predict
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Allow static files if they exist in dist
+        file_path = frontend_dist_dir / full_path
+        if full_path and file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        # Fall back to index.html for client-side routing
+        return FileResponse(frontend_dist_dir / "index.html")
 
 
 if __name__ == "__main__":
