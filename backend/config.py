@@ -48,17 +48,21 @@ class Settings(BaseSettings):
 
     @property
     def resolved_parquet_dir(self) -> Path:
-        """Intelligently resolve PARQUET_DIR on any laptop or system."""
+        """Intelligently resolve PARQUET_DIR on any laptop, server, or cloud system."""
         p = Path(self.PARQUET_DIR)
-        if p.exists():
+        if p.exists() and any(p.glob("*.parquet")):
             return p
         # Check bundled project data
         internal_data = PROJECT_ROOT / "data" / "MOD13C2_Parquet"
-        if internal_data.exists():
+        if internal_data.exists() and any(internal_data.glob("*.parquet")):
             return internal_data
         cwd_data = Path.cwd() / "data" / "MOD13C2_Parquet"
-        if cwd_data.exists():
+        if cwd_data.exists() and any(cwd_data.glob("*.parquet")):
             return cwd_data
+        # Check bundled sample dataset for cloud environments (Render, Railway, Fly)
+        sample_dir = PROJECT_ROOT / "data" / "sample_parquet"
+        if sample_dir.exists() and any(sample_dir.glob("*.parquet")):
+            return sample_dir
         return p
 
     @property

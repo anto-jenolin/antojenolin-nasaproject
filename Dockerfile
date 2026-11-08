@@ -25,6 +25,10 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend ./backend
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
+# Copy bundled data samples and trained models
+COPY data/sample_parquet ./data/sample_parquet
+COPY data/Derived/models ./data/Derived/models
+
 # Ensure writable runtime data directories exist
 RUN mkdir -p /app/data/Derived/models /app/data/MOD13C2_Parquet
 

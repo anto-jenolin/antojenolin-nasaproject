@@ -42,14 +42,13 @@ backend/.env
 # Massive NASA Satellite Raw Data (stored locally / on S3 / D: drive)
 data/MOD13C2_Parquet/
 data/MODIS/
-*.parquet
 *.h5
 *.hdf
 *.nc
+!data/sample_parquet/*.parquet
 
-# Machine Learning binary models
-*.pkl
-data/Derived/models/
+# Machine Learning binary models (allow bundled models in repo)
+!data/Derived/models/*.pkl
 
 # Node / Frontend
 frontend/node_modules/
