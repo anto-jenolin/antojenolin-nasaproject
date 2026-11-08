@@ -13,6 +13,7 @@ import os
 
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
+DEFAULT_DB_PATH = str(BACKEND_DIR / "terrapulse.db").replace("\\", "/")
 
 
 class Settings(BaseSettings):
@@ -43,7 +44,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:4173,http://127.0.0.1:5173"
 
     # ── Database ─────────────────────────────────────────────────────────────
-    DATABASE_URL: str = f"sqlite:///{str(BACKEND_DIR / 'terrapulse.db').replace('\\', '/')}"
+    DATABASE_URL: str = f"sqlite:///{DEFAULT_DB_PATH}"
 
     @property
     def resolved_parquet_dir(self) -> Path:
