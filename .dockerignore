@@ -10,5 +10,4 @@ venv/
 .gitignore
 .env
 frontend/node_modules
-frontend/src
 frontend/.vite
