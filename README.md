@@ -114,3 +114,5 @@ All 12 tests verify:
 ## License & Credits
 Developed for the NASA International Space Apps Challenge / Earth Science Data Exploration initiative.
 Data courtesy of NASA Earth Science Data and Information System (ESDIS), LP DAAC, GES DISC, and GMAO.
+
+<!-- redeploy trigger -->

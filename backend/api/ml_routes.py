@@ -225,8 +225,8 @@ async def get_artifacts(
         art_path = art.get("path")
         if art_path in admin_artifact_paths:
             continue  # Exclude models trained by admin
-        if user_artifact_paths and art_path not in user_artifact_paths:
-            continue  # Exclude other users' models
+        if art_path not in user_artifact_paths:
+            continue  # Exclude models not owned by the user
         filtered.append(art)
 
     return {"artifacts": filtered}

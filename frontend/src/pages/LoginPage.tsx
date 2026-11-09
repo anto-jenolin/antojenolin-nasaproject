@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Eye, EyeOff, Satellite, Globe, Lock, User, Shield, UserCircle, ArrowRight } from 'lucide-react'
@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 type LoginMode = 'user' | 'admin'
 
 export default function LoginPage() {
-  const { login } = useAuth()
+  const { login, isAuthenticated, loading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const from = (location.state as any)?.from?.pathname || '/'
@@ -17,7 +17,14 @@ export default function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  // If already authenticated, redirect away from login page
+  useEffect(() => {
+    if (!loading && isAuthenticated) {
+      navigate(from, { replace: true })
+    }
+  }, [loading, isAuthenticated, navigate, from])
 
   const handleModeSwitch = (newMode: LoginMode) => {
     if (newMode === 'admin') {
@@ -36,7 +43,7 @@ export default function LoginPage() {
       toast.error('Please enter username and password')
       return
     }
-    setLoading(true)
+    setSubmitting(true)
     try {
       await login(username.trim(), password)
       navigate(from, { replace: true })
@@ -44,7 +51,7 @@ export default function LoginPage() {
       const msg = err?.response?.data?.detail || 'Login failed. Check credentials.'
       toast.error(msg)
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
   }
 
@@ -148,7 +155,7 @@ export default function LoginPage() {
                   onChange={e => setUsername(e.target.value)}
                   autoComplete="username"
                   autoFocus
-                  disabled={loading}
+                  disabled={submitting}
                 />
               </div>
             </div>
@@ -166,7 +173,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   autoComplete="current-password"
-                  disabled={loading}
+                  disabled={submitting}
                 />
                 <button
                   type="button"
@@ -185,9 +192,9 @@ export default function LoginPage() {
               type="submit"
               className={`btn btn-lg ${mode === 'admin' ? 'btn-admin' : 'btn-primary'}`}
               style={{ width: '100%', justifyContent: 'center' }}
-              disabled={loading}
+              disabled={submitting}
             >
-              {loading ? (
+              {submitting ? (
                 <><div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Signing In…</>
               ) : (
                 <><Satellite size={16} /> Sign In to TerraPulse</>

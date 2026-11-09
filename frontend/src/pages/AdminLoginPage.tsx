@@ -15,7 +15,7 @@ export default function AdminLoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // If already logged in as admin, redirect
+  // If already logged in as admin, redirect immediately
   React.useEffect(() => {
     if (isAuthenticated && isAdmin) {
       navigate('/admin', { replace: true })
@@ -34,32 +34,37 @@ export default function AdminLoginPage() {
     setLoading(true)
     try {
       await login(username.trim(), password)
-      // login() sets isAdmin from server response — check after
-      // Use a small delay to let state settle, then redirect
-      // (AuthContext sets isAdmin from JWT/role in response)
-      setTimeout(() => {
-        const token = localStorage.getItem('access_token')
-        if (!token) {
-          setError('Login succeeded but token not found.')
-          return
-        }
-        // Decode role from token to verify admin
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1]))
-          if (payload.role !== 'admin') {
-            // Not an admin — clear and show error
-            localStorage.removeItem('access_token')
-            localStorage.removeItem('refresh_token')
-            setError('Your account does not have administrator privileges. Please use the regular login page.')
-            setLoading(false)
-            return
-          }
-        } catch {
-          // If decode fails, trust the context — navigate and let ProtectedRoute handle it
-        }
-        toast.success('Administrator login successful')
-        navigate('/admin', { replace: true })
-      }, 200)
+
+      // After login() resolves, decode the token synchronously to check role
+      const token = localStorage.getItem('access_token')
+      if (!token) {
+        setError('Login succeeded but token not found.')
+        setLoading(false)
+        return
+      }
+
+      let role = ''
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        role = payload.role ?? ''
+      } catch {
+        // malformed token — let ProtectedRoute handle it
+        role = 'unknown'
+      }
+
+      if (role !== 'admin') {
+        // Not an admin — clear tokens and show error
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        setError(
+          'Your account does not have administrator privileges. Please use the regular login page.'
+        )
+        setLoading(false)
+        return
+      }
+
+      toast.success('Administrator login successful')
+      navigate('/admin', { replace: true })
     } catch (err: any) {
       const msg = err?.response?.data?.detail || 'Login failed. Check your credentials.'
       setError(msg)

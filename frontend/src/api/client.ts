@@ -3,7 +3,7 @@ import axios from 'axios'
 const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 60000,
+  timeout: 90000, // 90s — allows for Render free-tier cold-starts and heavy ML ops
 })
 
 // Attach JWT token to every request
@@ -14,14 +14,33 @@ api.interceptors.request.use((config) => {
 })
 
 // Handle 401 — clear tokens and redirect to login
+// Skip redirect for /auth/me and /auth/login (initial session check)
+// to avoid a blink/redirect loop when the token is simply expired on page load.
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
-      window.location.href = '/login'
+    const url: string = err.config?.url ?? ''
+    const status: number = err.response?.status
+
+    if (status === 401) {
+      const isSilent = url.includes('/auth/me') || url.includes('/auth/login')
+      if (!isSilent) {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        window.location.href = '/login'
+      }
     }
+
+    // Surface Render's "high traffic" 503 message as a readable error
+    if (status === 503) {
+      const detail =
+        err.response?.data?.message ||
+        err.response?.data?.detail ||
+        'Server is busy (high traffic). Please wait a moment and try again.'
+      err.message = detail
+      ;(err as any).isHighTraffic = true
+    }
+
     return Promise.reject(err)
   }
 )

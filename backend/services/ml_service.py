@@ -69,9 +69,12 @@ def train_model(
         max_rows=max_train_rows + 50_000,
     )
 
-    if df.empty or len(df) < 100:
+    # Allow training on small sample sets (minimum 20 rows) to avoid
+    # "Insufficient data" errors for demo regions
+    if df.empty or len(df) < 20:
         raise ValueError(
-            "Insufficient data for training. Try a larger region or longer date range."
+            f"Insufficient data for training ({len(df)} rows). "
+            "Try a larger region, a longer date range, or relax pixel reliability."
         )
 
     # ── Sort by date (chronological split) ─────────────────────────────────
@@ -82,14 +85,21 @@ def train_model(
     df = df.dropna(subset=[target] + [f for f in features if f in NUMERIC_VARIABLES])
 
     split_idx = df[df["Date"] <= pd.Timestamp(test_split_date)].index.max()
-    if split_idx is None or split_idx < 50:
-        raise ValueError("Not enough training samples before the test split date.")
+    # Relax the min-train-samples check for small demo datasets (require at least 5)
+    if pd.isna(split_idx) or split_idx < 5:
+        raise ValueError(
+            "Not enough training samples before the test split date. "
+            "Try moving the split date earlier or extending the date range."
+        )
 
     train_df = df.iloc[: split_idx + 1].copy()
     test_df = df.iloc[split_idx + 1 :].copy()
 
-    if len(test_df) < 10:
-        raise ValueError("Not enough test samples after the split date.")
+    if len(test_df) < 2:
+        raise ValueError(
+            "Not enough test samples after the split date. "
+            "Try moving the split date earlier."
+        )
 
     X_train = train_df[features].values
     y_train = train_df[target].values
