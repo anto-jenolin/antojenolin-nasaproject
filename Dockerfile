@@ -38,6 +38,9 @@ EXPOSE 8000
 ENV APP_HOST=0.0.0.0
 ENV APP_PORT=8000
 ENV APP_ENV=production
+ENV ADMIN_EMAIL=admin@terrapulse.local
+ENV ADMIN_USERNAME=admin
+ENV ADMIN_PASSWORD=TerraPulse@Admin2024
 
 WORKDIR /app/backend
 CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

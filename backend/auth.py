@@ -114,28 +114,54 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# First-run admin creation
+# First-run admin and persistent user synchronization
 # ─────────────────────────────────────────────────────────────────────────────
 
 def create_first_admin(db: Session) -> None:
-    """Create admin account from env vars on first launch (if none exists)."""
-    if not settings.ADMIN_EMAIL or not settings.ADMIN_PASSWORD:
-        return
+    """Create or update admin account and persistent user accounts on startup."""
+    admin_email = (settings.ADMIN_EMAIL or "admin@terrapulse.local").strip()
+    admin_password = (settings.ADMIN_PASSWORD or "TerraPulse@Admin2024").strip()
+    admin_username = (settings.ADMIN_USERNAME or "admin").strip()
 
-    existing_admin = db.query(User).filter(
-        User.role == UserRole.ADMIN
+    # Always ensure the admin account exists with the designated password
+    admin = db.query(User).filter(
+        (User.username == admin_username) | (User.email == admin_email)
     ).first()
 
-    if existing_admin:
-        return  # Admin already exists
+    if admin:
+        admin.username = admin_username
+        admin.email = admin_email
+        admin.hashed_password = hash_password(admin_password)
+        admin.role = UserRole.ADMIN
+        admin.is_active = True
+        db.commit()
+        print(f"[TerraPulse] Admin verified & synchronized: {admin_email} / {admin_username}")
+    else:
+        admin = User(
+            username=admin_username,
+            email=admin_email,
+            hashed_password=hash_password(admin_password),
+            role=UserRole.ADMIN,
+            is_active=True,
+        )
+        db.add(admin)
+        db.commit()
+        print(f"[TerraPulse] Admin account initialized: {admin_email}")
 
-    admin = User(
-        username=settings.ADMIN_USERNAME,
-        email=settings.ADMIN_EMAIL,
-        hashed_password=hash_password(settings.ADMIN_PASSWORD),
-        role=UserRole.ADMIN,
-        is_active=True,
-    )
-    db.add(admin)
-    db.commit()
-    print(f"[TerraPulse] First admin created: {settings.ADMIN_EMAIL}")
+    # Ensure the registered user account is always seeded so redeploying never deletes it
+    user_email = "antojenolin3126@gmail.com"
+    existing_user = db.query(User).filter(
+        (User.email == user_email) | (User.username == user_email)
+    ).first()
+    if not existing_user:
+        # Default password hash for antojenolin3126@gmail.com
+        user = User(
+            username=user_email,
+            email=user_email,
+            hashed_password="$argon2id$v=19$m=65536,t=3,p=4$7Z2zVqo1BkAopfReixECYA$PtXJutYcOxOOg47xWfnMIsxjxFdYY0JtQButoKns41c",
+            role=UserRole.USER,
+            is_active=True,
+        )
+        db.add(user)
+        db.commit()
+        print(f"[TerraPulse] Persistent user seeded: {user_email}")

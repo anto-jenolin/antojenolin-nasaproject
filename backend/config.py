@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ── First-run Admin ───────────────────────────────────────────────────────
-    ADMIN_EMAIL: str = ""
-    ADMIN_PASSWORD: str = ""
+    ADMIN_EMAIL: str = "admin@terrapulse.local"
+    ADMIN_PASSWORD: str = "TerraPulse@Admin2024"
     ADMIN_USERNAME: str = "admin"
 
     # ── Dataset Paths ─────────────────────────────────────────────────────────
