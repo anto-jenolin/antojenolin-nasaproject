@@ -102,10 +102,7 @@ async def partial_dependence(
             max_rows=2000,
         )
 
-        if df.empty:
-            raise HTTPException(status_code=400, detail="No data available for PDP")
-
-        X_sample = df[features].values
+        X_sample = df[features].values if not df.empty else None
         return compute_partial_dependence(body.artifact_path, body.feature, X_sample)
 
     except FileNotFoundError:

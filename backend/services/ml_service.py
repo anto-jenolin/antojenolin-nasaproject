@@ -279,10 +279,20 @@ def _build_model(model_type: str):
 
 
 def load_artifact(artifact_path: str) -> Dict[str, Any]:
-    """Load a saved model artifact."""
-    if not Path(artifact_path).exists():
-        raise FileNotFoundError(f"Artifact not found: {artifact_path}")
-    with open(artifact_path, "rb") as fh:
+    """Load a saved model artifact.
+
+    Falls back to searching by filename inside ARTIFACTS_DIR when the stored
+    absolute path no longer exists (e.g. after redeployment or path migration).
+    """
+    p = Path(artifact_path)
+    if not p.exists():
+        # Try to locate the file by name inside the canonical artifacts directory
+        candidate = ARTIFACTS_DIR / p.name
+        if candidate.exists():
+            p = candidate
+        else:
+            raise FileNotFoundError(f"Artifact not found: {artifact_path}")
+    with open(p, "rb") as fh:
         return pickle.load(fh)
 
 

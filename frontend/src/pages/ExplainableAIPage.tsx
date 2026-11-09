@@ -7,29 +7,82 @@ import GlassCard from '../components/shared/GlassCard'
 import FeatureImportanceChart from '../components/charts/FeatureImportanceChart'
 import toast from 'react-hot-toast'
 
+// Typical MODIS vegetation index values for pre-populating local explanation inputs
+const FEATURE_DEFAULTS: Record<string, { value: string; min: string; max: string; hint: string }> = {
+  EVI:                  { value: '0.35', min: '0.0',  max: '1.0',  hint: 'Typical: 0.1–0.6 (dense vegetation ~0.5)' },
+  NIR_Reflectance:      { value: '0.45', min: '0.0',  max: '1.0',  hint: 'Typical: 0.2–0.6 (high for vegetation)' },
+  Red_Reflectance:      { value: '0.08', min: '0.0',  max: '0.5',  hint: 'Typical: 0.02–0.15 (low for vegetation)' },
+  Blue_Reflectance:     { value: '0.03', min: '0.0',  max: '0.3',  hint: 'Typical: 0.01–0.05' },
+  MIR_Reflectance:      { value: '0.15', min: '0.0',  max: '0.5',  hint: 'Typical: 0.05–0.30' },
+  Avg_Sun_Zenith_Angle: { value: '35.0', min: '0.0',  max: '90.0', hint: 'Typical: 20–60° (solar zenith)' },
+  NDVI:                 { value: '0.55', min: '-1.0', max: '1.0',  hint: 'Typical: 0.2–0.8 (dense vegetation ~0.6)' },
+}
+
+function getFeatureDefault(f: string) {
+  const norm = Object.keys(FEATURE_DEFAULTS).find(k => k.toLowerCase() === f.toLowerCase())
+  if (norm) return FEATURE_DEFAULTS[norm]
+  return { value: '0.35', min: '0.0', max: '1.0', hint: 'Suggested typical value: 0.35' }
+}
+
+function buildDefaultLocalFeatures(featureList: string[]): Record<string, string> {
+  const defaults: Record<string, string> = {}
+  for (const f of featureList) {
+    defaults[f] = getFeatureDefault(f).value
+  }
+  return defaults
+}
+
 export default function ExplainableAIPage() {
   const { region, dateStart, dateEnd } = useRegion()
   const [experiments, setExperiments] = useState<any[]>([])
   const [selectedExp, setSelectedExp] = useState<any>(null)
   const [activeTab, setActiveTab] = useState<'global' | 'local' | 'pdp'>('global')
   const [loading, setLoading] = useState(false)
+  const [globalError, setGlobalError] = useState<string | null>(null)
 
   const [globalResult, setGlobalResult] = useState<any>(null)
   const [localResult, setLocalResult] = useState<any>(null)
   const [pdpResult, setPdpResult] = useState<any>(null)
   const [pdpFeature, setPdpFeature] = useState('')
   const [localFeatures, setLocalFeatures] = useState<Record<string, string>>({})
-  const [sampleSize, setSampleSize] = useState(1000)
+  const [sampleSize, setSampleSize] = useState(200)
 
   useEffect(() => {
     mlApi.experiments().then(r => {
-      setExperiments(r.data || [])
+      const data = r.data || []
+      setExperiments(data)
+      if (data.length > 0 && !selectedExp) {
+        setSelectedExp(data[0])
+      }
     }).catch(() => {})
   }, [])
+
+  function parseFeatures(raw: any): string[] {
+    if (!raw) return ['EVI', 'NIR_Reflectance', 'Red_Reflectance']
+    if (Array.isArray(raw)) return raw
+    try { return JSON.parse(raw) } catch { return ['EVI', 'NIR_Reflectance', 'Red_Reflectance'] }
+  }
+
+  // When experiment changes: reset results and pre-populate local feature defaults
+  useEffect(() => {
+    setGlobalResult(null)
+    setGlobalError(null)
+    setLocalResult(null)
+    setPdpResult(null)
+    if (selectedExp) {
+      const feats = parseFeatures(selectedExp.features)
+      setLocalFeatures(buildDefaultLocalFeatures(feats))
+      if (!pdpFeature && feats.length > 0) {
+        setPdpFeature(feats[0])
+      }
+    }
+  }, [selectedExp])
 
   const runGlobal = async () => {
     if (!selectedExp) { toast.error('Select an experiment first'); return }
     setLoading(true)
+    setGlobalResult(null)
+    setGlobalError(null)
     try {
       const body: any = {
         artifact_path: selectedExp.artifact_path,
@@ -41,9 +94,15 @@ export default function ExplainableAIPage() {
         body.date_end = dateEnd
       }
       const { data } = await xaiApi.globalExplain(body)
-      setGlobalResult(data)
+      if (!data || (!data.native_importance && !data.permutation_importance && !data.shap_mean_abs)) {
+        setGlobalError('No feature importance data returned from model. Try a different experiment.')
+      } else {
+        setGlobalResult(data)
+      }
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Explanation failed')
+      const msg = e?.response?.data?.detail || e?.message || 'Explanation failed'
+      setGlobalError(msg)
+      toast.error(msg)
     } finally { setLoading(false) }
   }
 
@@ -85,7 +144,7 @@ export default function ExplainableAIPage() {
     } finally { setLoading(false) }
   }
 
-  const features = selectedExp?.features ? JSON.parse(selectedExp.features || '[]') : []
+  const features = parseFeatures(selectedExp?.features)
 
   return (
     <div className="app-shell">
@@ -167,6 +226,12 @@ export default function ExplainableAIPage() {
                   Uses model-native feature importance (mean impurity decrease for tree models). SHAP values computed where supported.
                 </p>
               </div>
+
+              {globalError && (
+                <div style={{ padding: '12px 16px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, color: '#f87171', marginBottom: 20, fontSize: '0.85rem' }}>
+                  {globalError}
+                </div>
+              )}
 
               {globalResult && (
                 <div className="grid-2" style={{ gap: 24 }}>
@@ -279,17 +344,49 @@ export default function ExplainableAIPage() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <div className="grid-2" style={{ gap: 24 }}>
                 <GlassCard>
-                  <div className="section-title" style={{ marginBottom: 16 }}>Input Feature Values</div>
-                  {(features.length > 0 ? features : ['EVI', 'NIR_Reflectance', 'Red_Reflectance']).map((f: string) => (
-                    <div key={f} className="form-group" style={{ marginBottom: 10 }}>
-                      <label className="form-label">{f}</label>
-                      <input className="form-input" type="number" step="0.001"
-                        value={localFeatures[f] || ''}
-                        onChange={e => setLocalFeatures(prev => ({ ...prev, [f]: e.target.value }))}
-                        placeholder="Enter value" />
-                    </div>
-                  ))}
-                  <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <div className="section-title" style={{ marginBottom: 0 }}>Input Feature Values</div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                      onClick={() => setLocalFeatures(buildDefaultLocalFeatures(features))}
+                    >
+                      Fill Suggested Values
+                    </button>
+                  </div>
+                  {(features.length > 0 ? features : ['EVI', 'NIR_Reflectance', 'Red_Reflectance']).map((f: string) => {
+                    const info = getFeatureDefault(f)
+                    return (
+                      <div key={f} className="form-group" style={{ marginBottom: 14 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                          <label className="form-label" style={{ marginBottom: 0 }}>{f}</label>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{info.hint}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <input
+                            className="form-input"
+                            type="number"
+                            step="0.001"
+                            value={localFeatures[f] ?? ''}
+                            onChange={e => setLocalFeatures(prev => ({ ...prev, [f]: e.target.value }))}
+                            placeholder={`e.g. ${info.value}`}
+                            style={{ flex: 1 }}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.72rem', padding: '6px 10px', whiteSpace: 'nowrap' }}
+                            onClick={() => setLocalFeatures(prev => ({ ...prev, [f]: info.value }))}
+                            title={`Use suggested default ${info.value}`}
+                          >
+                            Use {info.value}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 12 }}
                     onClick={runLocal} disabled={!selectedExp || loading}>
                     {loading ? <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> : <GitBranch size={14} />}
                     Explain This Prediction
