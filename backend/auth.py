@@ -148,20 +148,24 @@ def create_first_admin(db: Session) -> None:
         db.commit()
         print(f"[TerraPulse] Admin account initialized: {admin_email}")
 
-    # Ensure the registered user account is always seeded so redeploying never deletes it
+    # Ensure the primary user account is always seeded with admin privileges
     user_email = "antojenolin3126@gmail.com"
     existing_user = db.query(User).filter(
         (User.email == user_email) | (User.username == user_email)
     ).first()
-    if not existing_user:
-        # Default password hash for antojenolin3126@gmail.com
+    if existing_user:
+        existing_user.role = UserRole.ADMIN
+        existing_user.is_active = True
+        db.commit()
+        print(f"[TerraPulse] Primary account verified: {user_email}")
+    else:
         user = User(
             username=user_email,
             email=user_email,
-            hashed_password="$argon2id$v=19$m=65536,t=3,p=4$7Z2zVqo1BkAopfReixECYA$PtXJutYcOxOOg47xWfnMIsxjxFdYY0JtQButoKns41c",
-            role=UserRole.USER,
+            hashed_password=hash_password(admin_password),
+            role=UserRole.ADMIN,
             is_active=True,
         )
         db.add(user)
         db.commit()
-        print(f"[TerraPulse] Persistent user seeded: {user_email}")
+        print(f"[TerraPulse] Primary account initialized: {user_email}")
