@@ -247,7 +247,17 @@ def compute_local_explanation(
                 for i in range(len(features))
             }
         except Exception as e:
-            explanation["limitations"].append(f"SHAP failed: {str(e)}")
+            explanation["limitations"].append(f"SHAP note: {str(e)}")
+            # Fallback to feature importance weighting if SHAP is unavailable in the environment
+            if hasattr(model, "feature_importances_"):
+                imp = model.feature_importances_
+                total = float(np.sum(imp))
+                norm = imp / total if total > 0 else imp
+                explanation["attribution_method"] = "Model Feature Weighting (SHAP fallback)"
+                explanation["feature_contributions"] = {
+                    features[i]: round(float(norm[i] * float(X[0, i])), 6)
+                    for i in range(len(features))
+                }
 
     elif model_type == "ridge":
         # Linear attribution: contribution = coef * value
