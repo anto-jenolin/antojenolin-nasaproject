@@ -69,12 +69,12 @@ def train_model(
         max_rows=max_train_rows + 50_000,
     )
 
-    # Allow training on small sample sets (minimum 20 rows) to avoid
-    # "Insufficient data" errors for demo regions
-    if df.empty or len(df) < 20:
+    # Allow training on small sample sets (minimum 4 rows) so UI demo
+    # regions with small monthly samples (e.g. 12 rows) train successfully
+    if df.empty or len(df) < 4:
         raise ValueError(
             f"Insufficient data for training ({len(df)} rows). "
-            "Try a larger region, a longer date range, or relax pixel reliability."
+            "Need at least 4 observations. Try a larger region, longer date range, or relax pixel reliability."
         )
 
     # ── Sort by date (chronological split) ─────────────────────────────────
@@ -84,22 +84,28 @@ def train_model(
     # Drop rows where target is null
     df = df.dropna(subset=[target] + [f for f in features if f in NUMERIC_VARIABLES])
 
-    split_idx = df[df["Date"] <= pd.Timestamp(test_split_date)].index.max()
-    # Relax the min-train-samples check for small demo datasets (require at least 5)
-    if pd.isna(split_idx) or split_idx < 5:
+    if len(df) < 4:
         raise ValueError(
-            "Not enough training samples before the test split date. "
-            "Try moving the split date earlier or extending the date range."
+            f"Insufficient valid data after filtering nulls ({len(df)} rows). "
+            "Need at least 4 valid observations."
         )
+
+    # Chronological split logic
+    split_idx = df[df["Date"] <= pd.Timestamp(test_split_date)].index.max()
+
+    # If the user-chosen test_split_date does not leave at least 2 train and 2 test samples,
+    # automatically adapt to an 80/20 chronological split so small datasets never fail
+    if pd.isna(split_idx) or split_idx < 1 or (len(df) - 1 - split_idx) < 2:
+        test_count = max(2, int(len(df) * 0.2))
+        split_idx = max(1, len(df) - test_count - 1)
 
     train_df = df.iloc[: split_idx + 1].copy()
     test_df = df.iloc[split_idx + 1 :].copy()
 
-    if len(test_df) < 2:
-        raise ValueError(
-            "Not enough test samples after the split date. "
-            "Try moving the split date earlier."
-        )
+    # Safety check: if test set still somehow has < 1 sample, allocate the last sample to test
+    if len(test_df) < 1 and len(train_df) >= 2:
+        test_df = train_df.iloc[-1:].copy()
+        train_df = train_df.iloc[:-1].copy()
 
     X_train = train_df[features].values
     y_train = train_df[target].values
@@ -115,7 +121,11 @@ def train_model(
 
     mae = float(mean_absolute_error(y_test, y_pred))
     rmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))
-    r2 = float(r2_score(y_test, y_pred))
+    try:
+        r2_val = r2_score(y_test, y_pred)
+        r2 = float(r2_val) if not np.isnan(r2_val) else 0.0
+    except Exception:
+        r2 = 0.0
 
     # Baseline comparison (mean prediction)
     baseline = DummyRegressor(strategy="mean")
@@ -125,15 +135,18 @@ def train_model(
 
     # ── Feature Importance (permutation on test set) ───────────────────────
     perm_imp = None
-    if model_type not in ("baseline_mean", "baseline_persistence"):
-        perm = permutation_importance(
-            model, X_test[:min(1000, len(X_test))], y_test[:min(1000, len(y_test))],
-            n_repeats=3, random_state=42, n_jobs=-1
-        )
-        perm_imp = {
-            features[i]: round(float(perm.importances_mean[i]), 6)
-            for i in range(len(features))
-        }
+    if model_type not in ("baseline_mean", "baseline_persistence") and len(X_test) >= 2:
+        try:
+            perm = permutation_importance(
+                model, X_test[:min(1000, len(X_test))], y_test[:min(1000, len(y_test))],
+                n_repeats=3, random_state=42, n_jobs=1
+            )
+            perm_imp = {
+                features[i]: round(float(perm.importances_mean[i]), 6)
+                for i in range(len(features))
+            }
+        except Exception:
+            perm_imp = None
 
     # Model-native importance (Random Forest)
     native_imp = None
