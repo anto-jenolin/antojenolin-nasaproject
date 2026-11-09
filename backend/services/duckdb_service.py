@@ -475,14 +475,49 @@ def query_training_data(
     source = get_parquet_source(date_start, date_end)
     col_str = ", ".join(all_cols)
 
-    # Use uniform Bernoulli sampling without an early-stopping LIMIT so all dates are sampled
-    sample_pct = min(10.0, max(0.5, round((max_rows / 4_000_000) * 100, 2)))
+    con = get_connection()
+    # Query matching data bounded by max_rows without random Bernoulli drop
     sql = f"""
         SELECT {col_str}
         FROM read_parquet({source})
         {where}
-        USING SAMPLE {sample_pct}% (bernoulli)
+        LIMIT {max_rows}
     """
+    df = con.execute(sql).df()
 
-    con = get_connection()
-    return con.execute(sql).df()
+    # If strict QA filtered out too much data for a small region, relax to QA <= 3
+    if len(df) < 30 and min_pixel_reliability < 3:
+        relaxed_where = build_region_where(
+            min_lat=min_lat, max_lat=max_lat,
+            min_lon=min_lon, max_lon=max_lon,
+            date_start=date_start, date_end=date_end,
+            min_pixel_reliability=3,
+            target_variable=target,
+        )
+        for f in features:
+            if f in NUMERIC_VARIABLES:
+                relaxed_where += f" AND {f} IS NOT NULL"
+        relaxed_df = con.execute(f"SELECT {col_str} FROM read_parquet({source}) {relaxed_where} LIMIT {max_rows}").df()
+        if len(relaxed_df) > len(df):
+            df = relaxed_df
+
+    # If still very small (< 20 rows), broaden bounding box slightly to capture neighboring CMG cells
+    if len(df) < 20:
+        broad_where = build_region_where(
+            min_lat=max(-90.0, min_lat - 2.5), max_lat=min(90.0, max_lat + 2.5),
+            min_lon=max(-180.0, min_lon - 2.5), max_lon=min(180.0, max_lon + 2.5),
+            date_start=date_start, date_end=date_end,
+            min_pixel_reliability=3,
+            target_variable=target,
+        )
+        for f in features:
+            if f in NUMERIC_VARIABLES:
+                broad_where += f" AND {f} IS NOT NULL"
+        try:
+            broad_df = con.execute(f"SELECT {col_str} FROM read_parquet({source}) {broad_where} LIMIT {max_rows}").df()
+            if len(broad_df) > len(df):
+                df = broad_df
+        except Exception:
+            pass
+
+    return df
